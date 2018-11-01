@@ -836,6 +836,11 @@ static uint8_t App_HandleMlmeInput(nwkMessage_t *pMsg, uint8_t appInstance)
 static void App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstance)
 {
   uint8_t numero ;
+  uint8_t lqi;
+  uint8_t length;
+  uint8_t lengthstring[4];
+  uint8_t lqistring[4];
+
   switch(pMsgIn->msgType)
   {
     /* The MCPS-Data confirm is sent by the MAC to the network
@@ -869,8 +874,13 @@ static void App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstance)
 	      }
 
     Serial_SyncWrite( interfaceId,pMsgIn->msgData.dataInd.pMsdu, pMsgIn->msgData.dataInd.msduLength );
-    Serial_SyncWrite(interfaceId, pMsgIn->msgData.dataInd.mpduLinkQuality, 1);
-    Serial_SyncWrite(interfaceId, pMsgIn->msgData.dataInd.msduLength, 1);
+    lqi=pMsgIn->msgData.dataInd.mpduLinkQuality;
+    length=pMsgIn->msgData.dataInd.msduLength;
+    lqistring[3]='\0';
+    lqistring[2]=lqi%10;
+    lqistring[1]=(lqi/10)%10;
+    lqistring[0]=(lqi/10)/10;
+    Serial_SyncWrite( interfaceId,lqistring, 4 );
 
 
 
