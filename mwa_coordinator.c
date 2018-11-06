@@ -93,6 +93,7 @@ static void    App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstan
 static void    App_TransmitUartData(void);
 static uint8_t App_WaitMsg(nwkMessage_t *pMsg, uint8_t msgType);
 static void    App_HandleKeys(uint8_t events);
+void NewApp_TransmitUartData(uint8_t msg[]);  //NEED
 
 void App_init( void );
 void AppThread (uint32_t argument);
@@ -141,6 +142,19 @@ static const uint64_t mExtendedAddress = mMacExtendedAddress_c;
 static instanceId_t   macInstance;
 static uint8_t        interfaceId;
 osaEventId_t          mAppEvent;
+
+typedef struct
+{
+	uint16_t shortAdd;
+	uint64_t extAdd;
+	uint8_t RxOnWhenIdle;
+	uint8_t DeviceType;
+} node_t;
+
+
+node_t database[5];
+
+
 
 /************************************************************************************
 *************************************************************************************
@@ -413,6 +427,7 @@ void AppThread(uint32_t argument)
               /* Messages from the MCPS must always be freed. */
               MSG_Free(pMsgIn);
               pMsgIn = NULL;
+
           }
       }  
       
@@ -736,7 +751,9 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
 {
   mlmeMessage_t *pMsg;
   mlmeAssociateRes_t *pAssocRes;
- 
+  uint16_t shortadd = 0x0000;
+  bool_t dbcheck = FALSE;
+  uint8_t counter = 0;
   Serial_Print(interfaceId,"Sending the MLME-Associate Response message to the MAC...", gAllowToBlock_d);
  
   /* Allocate a message for the MLME */
@@ -754,12 +771,29 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
        different short addresses. However, if a device do not want to use
        short addresses at all in the PAN, a short address of 0xFFFE must
        be assigned to it. */
+    while(dbcheck != TRUE){
+    	if(counter>4){
+    	    		Serial_Print( interfaceId,"Invalid parameter!\n\r", gAllowToBlock_d );
+    	    		return errorInvalidParameter;
+    	    	}
+    	if(pMsgIn->msgData.associateInd.deviceAddress != database[counter].extAdd){
+    		shortadd=+1;
+    		dbcheck=TRUE;
+    	}
+    	else{
+    		shortadd = database[counter].shortAdd;
+    		dbcheck=TRUE;
+    	}
+
+
+
+    }
     if(pMsgIn->msgData.associateInd.capabilityInfo & gCapInfoAllocAddr_c)
     {
       /* Assign a unique short address less than 0xfffe if the device requests so. */
-      pAssocRes->assocShortAddress = 0x0001;
+      pAssocRes->assocShortAddress = shortadd;
     }
-    else
+    else //NEED HERE
     {
       /* A short address of 0xfffe means that the device is granted access to
          the PAN (Associate successful) but that long addressing is used.*/
@@ -775,7 +809,18 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
     /* Save device info. */
     FLib_MemCpy(&mDeviceShortAddress, &pAssocRes->assocShortAddress, 2);
     FLib_MemCpy(&mDeviceLongAddress,  &pAssocRes->deviceAddress,     8);
-    
+    database[counter].extAdd=pAssocRes->deviceAddress;
+    database[counter].shortAdd=pAssocRes->assocShortAddress;
+    if(pMsgIn->msgData.associateInd.capabilityInfo==0x2){
+    	database[counter].DeviceType=1;
+    	database[counter].RxOnWhenIdle=0;
+    }
+    if(pMsgIn->msgData.associateInd.capabilityInfo==0x80){
+      	database[counter].DeviceType=0;
+      	database[counter].RxOnWhenIdle=1;
+      }
+    counter++;
+    //database[counter].DeviceType=
     /* Send the Associate Response to the MLME. */
     if( gSuccess_c == NWK_MLME_SapHandler( pMsg, macInstance ) )
     {
@@ -839,7 +884,7 @@ static void App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstance)
   uint8_t lqi;
   uint8_t length;
   uint8_t lengthstring[4];
-  uint8_t lqistring[4];
+  uint8_t* lqistring;
 
   switch(pMsgIn->msgType)
   {
@@ -854,7 +899,7 @@ static void App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstance)
     /* The MCPS-Data indication is sent by the MAC to the network
        or application layer when data has been received. We simply
        copy the received data to the UART. */
-
+	  NewApp_TransmitUartData("APP_ACK");
 	 numero=pMsgIn->msgData.dataInd.pMsdu[9];
 	  if(numero=='1'){
 	      	LED_TurnOffAllLeds();
@@ -873,14 +918,14 @@ static void App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstance)
 	      	Led4On();
 	      }
 
-    Serial_SyncWrite( interfaceId,pMsgIn->msgData.dataInd.pMsdu, pMsgIn->msgData.dataInd.msduLength );
-    lqi=pMsgIn->msgData.dataInd.mpduLinkQuality;
-    length=pMsgIn->msgData.dataInd.msduLength;
-    lqistring[3]='\0';
-    lqistring[2]=lqi%10;
-    lqistring[1]=(lqi/10)%10;
-    lqistring[0]=(lqi/10)/10;
-    Serial_SyncWrite( interfaceId,lqistring, 4 );
+	      Serial_SyncWrite( interfaceId,pMsgIn->msgData.dataInd.pMsdu, pMsgIn->msgData.dataInd.msduLength );
+	      Serial_Print(interfaceId, "Address: ", gAllowToBlock_d);
+	      Serial_PrintDec(interfaceId, mDeviceLongAddress);
+	      Serial_Print(interfaceId, ", Length: ", gAllowToBlock_d);
+	      Serial_PrintDec(interfaceId, pMsgIn->msgData.dataInd.msduLength);
+	      Serial_Print(interfaceId, ", Link Quality: ", gAllowToBlock_d);
+	      Serial_PrintDec(interfaceId, pMsgIn->msgData.dataInd.mpduLinkQuality);
+	      Serial_Print(interfaceId, "\r\n\r\n", gAllowToBlock_d);
 
 
 
@@ -1039,7 +1084,93 @@ static void App_HandleKeys
     }
 #endif
 }
+void NewApp_TransmitUartData(uint8_t msg[])  //NEED
+{
+    uint16_t count;
 
+    /* Count bytes receive over the serial interface */
+   // Serial_RxBufferByteCount(interfaceId, &count);
+
+
+
+    /* Limit data transfer size */
+
+
+    /* Use multi buffering for increased TX performance. It does not really
+    have any effect at low UART baud rates, but serves as an
+    example of how the throughput may be improved in a real-world
+    application where the data rate is of concern. */
+  /*
+    if( (mcPendingPackets < mDefaultValueOfMaxPendingDataPackets_c) && (mpPacket == NULL) )
+    {
+
+       ;
+    }*/
+
+    mpPacket = MSG_Alloc(sizeof(nwkToMcpsMessage_t) + gMaxPHYPacketSize_c);
+    if(mpPacket != NULL)
+    {
+
+        /* Data is available in the SerialManager's receive buffer. Now create an
+        MCPS-Data Request message containing the data. */
+        mpPacket->msgType = gMcpsDataReq_c;
+        mpPacket->msgData.dataReq.pMsdu = (uint8_t*)(&mpPacket->msgData.dataReq.pMsdu) +
+                                          sizeof(mpPacket->msgData.dataReq.pMsdu);
+
+        Serial_Read(interfaceId, mpPacket->msgData.dataReq.pMsdu, count, &count); //
+        /* Create the header using coordinator information gained during
+        the scan procedure. Also use the short address we were assigned
+        by the coordinator during association. */
+        mpPacket->msgData.dataReq.pMsdu = msg;
+        uint8_t letter = 0;
+        uint8_t i=0;
+
+        for(i = 0; msg[i] != '\0'; ++i);
+        count = i;
+
+
+	//	FLib_MemCpy(&mpPacket->msgData.dataReq.dstAddr, &mCoordInfo.coordAddress, 8);
+     //   FLib_MemCpy(&mpPacket->msgData.dataReq.srcAddr, &maMyAddress, 8);
+      //  FLib_MemCpy(&mpPacket->msgData.dataReq.dstPanId, &mCoordInfo.coordPanId, 2);
+       // FLib_MemCpy(&mpPacket->msgData.dataReq.srcPanId, &mCoordInfo.coordPanId, 2);
+        mpPacket->msgData.dataReq.dstAddrMode = mDeviceLongAddress;
+        mpPacket->msgData.dataReq.srcAddrMode = mMacExtendedAddress_c;
+        mpPacket->msgData.dataReq.msduLength = i;
+        /* Request MAC level acknowledgement of the data packet */
+        mpPacket->msgData.dataReq.txOptions = gMacTxOptionsAck_c;
+        /* Give the data packet a handle. The handle is
+        returned in the MCPS-Data Confirm message. */
+        mpPacket->msgData.dataReq.msduHandle = mMsduHandle++;
+        /* Don't use security */
+        mpPacket->msgData.dataReq.securityLevel = gMacSecurityNone_c;
+
+        /* Send the Data Request to the MCPS */
+        (void)NWK_MCPS_SapHandler(mpPacket, macInstance);
+
+        /* Prepare for another data buffer */
+        mpPacket = NULL;
+        mcPendingPackets++;
+    }
+
+    /* If the data wasn't send over the air because there are too many pending packets,
+    or new data has beed received, try to send it later   */
+    Serial_RxBufferByteCount(interfaceId, &count);
+
+    if( count )
+    {
+        OSA_EventSet(mAppEvent, gAppEvtRxFromUart_c);
+    }
+}
+
+/******************************************************************************
+* The App_ReceiveUartData() function will check if it is time to send out an
+* MLME-Poll request in order to receive data from the coordinator. If its time,
+* and we are permitted then a poll request is created and sent.
+*
+* The function uses the coordinator information gained during the Active Scan
+* for building the MLME-Poll Request message. The message is sent to the MLME
+* service access point in the MAC.
+******************************************************************************/
 /******************************************************************************
 * The following functions are called by the MAC to put messages into the
 * Application's queue. They need to be defined even if they are not used

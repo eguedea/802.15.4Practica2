@@ -57,10 +57,10 @@
   #define mDefaultValueOfChannel_c (0x0001FFFF)
   #define mDefaultMaxChannel_c     (0x11)
 #else
-  #define mDefaultValueOfChannel_c (0x07FFF800)
+  #define mDefaultValueOfChannel_c (0x08000)
 #endif
 
-#define mMacExtendedAddress_c    (0x1111111111111111)
+#define mMacExtendedAddress_c    (0x1111111111111110)
 
 /* Set the Coordinator short address */ 
 #define mDefaultValueOfShortAddress_c     0x0000
@@ -107,6 +107,8 @@ enum {
   errorInvalidParameter,
   errorNoScanResults
 };
+
+
 
 /******************************************************************************
 *******************************************************************************
