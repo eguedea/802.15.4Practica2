@@ -93,7 +93,7 @@ static void    App_HandleMcpsInput(mcpsToNwkMessage_t *pMsgIn, uint8_t appInstan
 static void    App_TransmitUartData(void);
 static uint8_t App_WaitMsg(nwkMessage_t *pMsg, uint8_t msgType);
 static void    App_HandleKeys(uint8_t events);
-void NewApp_TransmitUartData(uint8_t msg[]);  //NEED
+void NewApp_TransmitUartData();  //NEED
 
 void App_init( void );
 void AppThread (uint32_t argument);
@@ -152,7 +152,7 @@ typedef struct
 } node_t;
 
 
-node_t database[5];
+node_t database[6];
 
 
 
@@ -751,9 +751,9 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
 {
   mlmeMessage_t *pMsg;
   mlmeAssociateRes_t *pAssocRes;
-  uint16_t shortadd = 0x0000;
+  static uint16_t shortadd = 0x0000;
   bool_t dbcheck = FALSE;
-  uint8_t counter = 0;
+  static uint8_t counter = 0;
   Serial_Print(interfaceId,"Sending the MLME-Associate Response message to the MAC...", gAllowToBlock_d);
  
   /* Allocate a message for the MLME */
@@ -772,12 +772,14 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
        short addresses at all in the PAN, a short address of 0xFFFE must
        be assigned to it. */
     while(dbcheck != TRUE){
-    	if(counter>4){
+    	if(counter>5){
     	    		Serial_Print( interfaceId,"Invalid parameter!\n\r", gAllowToBlock_d );
     	    		return errorInvalidParameter;
     	    	}
     	if(pMsgIn->msgData.associateInd.deviceAddress != database[counter].extAdd){
-    		shortadd=+1;
+    		shortadd+=1;
+    	    counter++;
+
     		dbcheck=TRUE;
     	}
     	else{
@@ -811,15 +813,14 @@ static uint8_t App_SendAssociateResponse(nwkMessage_t *pMsgIn, uint8_t appInstan
     FLib_MemCpy(&mDeviceLongAddress,  &pAssocRes->deviceAddress,     8);
     database[counter].extAdd=pAssocRes->deviceAddress;
     database[counter].shortAdd=pAssocRes->assocShortAddress;
-    if(pMsgIn->msgData.associateInd.capabilityInfo==0x2){
+    if(pMsgIn->msgData.associateInd.capabilityInfo|0x2){
     	database[counter].DeviceType=1;
     	database[counter].RxOnWhenIdle=0;
     }
-    if(pMsgIn->msgData.associateInd.capabilityInfo==0x80){
+    if(pMsgIn->msgData.associateInd.capabilityInfo|0x80){
       	database[counter].DeviceType=0;
       	database[counter].RxOnWhenIdle=1;
       }
-    counter++;
     //database[counter].DeviceType=
     /* Send the Associate Response to the MLME. */
     if( gSuccess_c == NWK_MLME_SapHandler( pMsg, macInstance ) )
@@ -1084,7 +1085,7 @@ static void App_HandleKeys
     }
 #endif
 }
-void NewApp_TransmitUartData(uint8_t msg[])  //NEED
+void NewApp_TransmitUartData()  //NEED
 {
     uint16_t count;
 
@@ -1121,12 +1122,11 @@ void NewApp_TransmitUartData(uint8_t msg[])  //NEED
         /* Create the header using coordinator information gained during
         the scan procedure. Also use the short address we were assigned
         by the coordinator during association. */
-        mpPacket->msgData.dataReq.pMsdu = msg;
+        mpPacket->msgData.dataReq.pMsdu = "APP_ACK";
         uint8_t letter = 0;
         uint8_t i=0;
 
-        for(i = 0; msg[i] != '\0'; ++i);
-        count = i;
+
 
 
 	//	FLib_MemCpy(&mpPacket->msgData.dataReq.dstAddr, &mCoordInfo.coordAddress, 8);
@@ -1135,7 +1135,7 @@ void NewApp_TransmitUartData(uint8_t msg[])  //NEED
        // FLib_MemCpy(&mpPacket->msgData.dataReq.srcPanId, &mCoordInfo.coordPanId, 2);
         mpPacket->msgData.dataReq.dstAddrMode = mDeviceLongAddress;
         mpPacket->msgData.dataReq.srcAddrMode = mMacExtendedAddress_c;
-        mpPacket->msgData.dataReq.msduLength = i;
+        mpPacket->msgData.dataReq.msduLength = 7;
         /* Request MAC level acknowledgement of the data packet */
         mpPacket->msgData.dataReq.txOptions = gMacTxOptionsAck_c;
         /* Give the data packet a handle. The handle is
